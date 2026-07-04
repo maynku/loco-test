@@ -8,7 +8,9 @@ const BusLocationSchema = new mongoose.Schema({
         {
             lat: Number,
             lng: Number,
-            timestamp: { type: Date, default: Date.now }
+            timestamp: { 
+                type: Date, default: Date.now //curr date and time ko default value ke roop mein set karega
+            },
         }
     ]
 });
