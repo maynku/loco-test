@@ -11,7 +11,8 @@ const {updateBusLocation,verifyBus,liveLocationAll} = require('./controller/busC
 
 
 const app = express();
-const port = process.env.PORT || 4000;
+const port = process.env.PORT;
+
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -24,7 +25,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.post('/verify-bus',verifyBus,)
-app.get('/api/live-location-all',liveLocationAll);
+app.get('/live-location-all',liveLocationAll);
 app.get('/student', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

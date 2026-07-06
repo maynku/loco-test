@@ -6,7 +6,7 @@ const BusLocationSchema = new mongoose.Schema({
     date: { type: String, required: true }, // Format: 'YYYY-MM-DD' (daily tracking ke liye)
     locations: [
         {
-            lat: Number,
+            lat: Number, //bus ek doc udk rnadr array k form uske co ordinate
             lng: Number,
             timestamp: { 
                 type: Date, default: Date.now //curr date and time ko default value ke roop mein set karega

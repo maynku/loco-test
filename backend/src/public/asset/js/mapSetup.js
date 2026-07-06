@@ -12,11 +12,12 @@ let isFirstLoad = true;
 // 2. Fetch and Update Markers Function
 async function updateLiveBuses() {
     try {
-        const res = await fetch('/api/live-location-all');
+        const res = await fetch('/live-location-all');
+       // app.get('/live-location-all',liveLocationAll);
         if (!res.ok) return;
 
         const buses = await res.json(); // Data format: [{busId, lat, lng, timestamp}]
-        
+        console.log("Fetched Live Buses:", buses);
         // Counter update karo
         document.getElementById('bus-count').innerText = buses.length;
 
@@ -39,6 +40,7 @@ async function updateLiveBuses() {
                         <b>Lat:</b> ${lat}<br>
                         <b>Lng:</b> ${lng}<br>
                         <small style="color: #7f8c8d;">Last Seen (Server): ${redisTime}</small>
+
                     </div>
                 `;
 

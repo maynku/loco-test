@@ -34,6 +34,7 @@ const verifyBus = async (req, res) => {
         console.log("Verifying Bus ID:", req.body.busId);
         const { busId } = req.body; 
         const FoundBus = await bus.findOne({ busId });
+        console.log("Bus Found:", FoundBus);
         if (FoundBus) {
            return res.status(200).json({ success: true, message: "Bus ID verified!" });
         } else {
@@ -63,12 +64,12 @@ const updateBusLocation = async (data) => {
         }
 
         // 1. Redis mein instant tracking ke liye live location update karo
-        await redisClient.set(
-    `bus:${busId}:live`, 
-    JSON.stringify({ lat, lng, timestamp: new Date() }),
-    { EX: 300 }
-);
+        console.log(`Updating Redis for Bus: ${busId} -> [${lat}, ${lng}]`);
+        await redisClient.set(`bus:${busId}:live`, JSON.stringify({ lat, lng, timestamp: new Date() }),{ EX: 180 }); // 5 minute expiry for live tracking
+        console.log(`Redis updated for Bus: ${busId} with 5 min expiry.`);
 
+
+        console.log(`Saving to MongoDB for Bus: ${busId} -> [${lat}, ${lng}]`);
         // 2. MongoDB mein flat row create karo (No upsert = No race condition)
         await bus.create({
             busId,
@@ -86,16 +87,20 @@ const updateBusLocation = async (data) => {
 const liveLocationAll = async (req, res) => {
     try {
         // 1. RedisClient hamesha top par imported hona chahiye file ke
+        console.log("Fetching all live bus locations from Redis...");
         const keys = await redisClient.keys('bus:*:live');
-        
+        console.log(`Found ${keys.length} active buses in Redis.`);
         if (keys.length === 0) {
+            console.log("No active buses found in Redis.");
             return res.status(200).json([]); // No active buses
         }
 
+        console.log("Keys fetched from Redis:", keys);
         // 2. Multi/Pipeline fast fetch ke liye
         const pipeline = redisClient.multi();
         keys.forEach(key => pipeline.get(key));
         const results = await pipeline.exec();
+        console.log("Fetched live locations from Redis:", results);
 
         // 3. Array format mein data ready karna
         const allBuses = keys.map((key, index) => {
@@ -105,6 +110,7 @@ const liveLocationAll = async (req, res) => {
                 ...JSON.parse(results[index])
             };
         });
+        console.log("All live bus locations prepared for response:", allBuses);
 
         return res.status(200).json(allBuses);
 
