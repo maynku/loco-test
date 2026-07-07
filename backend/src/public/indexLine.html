@@ -54,29 +54,12 @@
         </div>
     </div>
 
-    <!-- 2️⃣ MAP SECTION (Shuru mein hidden rahega)
+    <!-- 2️⃣ MAP SECTION (Shuru mein hidden rahega) -->
     <div id="map-container">
         <button class="logout-btn" onclick="handleLogout()">Logout</button>
         <div class="info-box">
             Active Buses: <span id="bus-count">0</span>
         </div>
-        <div id="map"></div>
-    </div> -->
-
-    <!-- 1NEw bus section with button--> 
-    <div id="map-container">
-        <button class="logout-btn" onclick="handleLogout()">Logout</button>
-        
-        <!-- 🎛️ Control Box: Active count ke theek neeche input aur button jadd diya -->
-        <div class="info-box">
-            <div>Active Buses: <span id="bus-count">0</span></div>
-            <hr style="margin: 5px 0; border: 0; border-top: 1px solid #eee;">
-            <div style="display: flex; gap: 5px; margin-top: 5px;">
-                <input type="text" id="search-bus-id" placeholder="Enter Bus ID (e.g. TESTBUS1)" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px; width: 150px; font-size: 13px;">
-                <button onclick="handleBusSearchClick()" style="padding: 6px 12px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">Show Path</button>
-            </div>
-        </div>
-        
         <div id="map"></div>
     </div>
 

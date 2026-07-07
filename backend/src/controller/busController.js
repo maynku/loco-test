@@ -1,6 +1,7 @@
 // const BusModel = require('../model/busModel');
 const redisClient = require('../config/redis');
 const bus = require('../model/busModel2');
+
 // const updateBusLocation = async (data) => {
 //     const { busId, lat, lng } = data;
 //     const today = new Date().toISOString().split('T')[0];
@@ -54,7 +55,7 @@ const updateBusLocation = async (data) => {
     const { busId, lat, lng } = data;
 
     try {
-        
+        //For Beta testing isko off kr dena 
         const isValidBus = await bus.findOne({ busId: busId });
         
         if (!isValidBus) {
@@ -81,6 +82,9 @@ const updateBusLocation = async (data) => {
         console.log(`[Success] Location saved in DB for verified bus: ${busId}`);
 
     } catch (error) {
+        if(error.code === 11000) {
+            console.log(`[Race Condition Handled] Duplicate entry for Bus ${busId}. Skipping this frame.`);
+        }
         console.error('Database error in updateBusLocation:', error.message);
     }
 };

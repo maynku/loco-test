@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:5000'; 
+const API_URL = 'http://localhost:5000'; // Apne backend ka URL check kar lena bhai
 let trackingInterval = null;
 
 // 🔄 Page load hote hi session check karo
@@ -54,7 +54,7 @@ function handleLogout() {
     window.location.reload();
 }
 
-// 🗺️ Leaflet Initialization
+// 🗺️ Tumhara Purana Leaflet Initialization logic
 let map;
 const busMarkers = {};
 let isFirstLoad = true;
@@ -69,21 +69,24 @@ function initMap() {
 
 // 📡 Interval trigger function
 function startTrackingLoop() {
-    updateLiveBuses(); 
+    updateLiveBuses(); // Pehli baar turant call karo
+    // Tumne 3 minute ka timer lagaya hai (180000ms), test karne ke liye 5000ms (5 sec) bhi kar sakte ho
     trackingInterval = setInterval(updateLiveBuses, 180000); 
 }
 
-// 🎯 Fetch and Update Markers Function
+// 🎯 Fetch and Update Markers Function (With JWT Security)
 async function updateLiveBuses() {
     const token = localStorage.getItem('beta_token');
     if (!token) return handleLogout();
 
     try {
+        // 🔒 Header mein Bearer Token bhej rahe hain
         const res = await fetch(`${API_URL}/live-location-all`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
+        // 🚨 AUTO LOGOUT LOGIC: Agar token expire ho gaya (Backend throws 401)
         if (res.status === 401) {
             alert("Session Expired! Please Login Again");
             handleLogout();
@@ -134,77 +137,42 @@ async function updateLiveBuses() {
     }
 }
 
-// =========================================================================
-// 🚀 NEW FEATURE: PATH LINE GENERATION & ERROR-PROOF UI SEARCH
-// =========================================================================
 
-let busPathLine = null; // Map par purani polyline track karne ke liye variable
+let busPathLine = null; // Map par path track karne ke liye global instance
 
-// 📡 1. Main function jo backend se data laakar line plot karega (Error Handling ke sath)
 async function drawBusPath(busId) {
     try {
-        console.log(`Fetching history data for Bus ID: ${busId}`);
-        
-        // Open API hit karo bina kisi header ya token ke
+        // 🛰️ Bina kisi header ke direct open API hit karo jaisa tumne bola
         const res = await fetch(`${API_URL}/api/bus-history/${busId}`, {
             method: 'GET'
         });
 
-        // ❌ Check 1: Agar server par route hi nahi mila ya server down hai (404, 500, etc.)
-        if (!res.ok) {
-            if (res.status === 404) {
-                alert(`⚠️ Error: Bhai, Bus ID "${busId}" server par exist hi nahi karti!`);
-            } else {
-                alert("⚠️ Server error! Kuch der baad dubara try karein.");
-            }
-            return;
-        }
-        
+        if (!res.ok) return;
         const data = await res.json();
 
-        // ❌ Check 2: Agar response aa gaya par success false hai ya path list khali hai
         if (data.success && data.path && data.path.length > 0) {
             
-            // 🧹 Agar map par pehle se koi purani line bani hai, toh use mitao
+            // 🧹 Purani line ko map se remove karo agar koi pehle se draw ho rhi hai
             if (busPathLine) {
                 map.removeLayer(busPathLine);
             }
 
-            // ✍️ Nayi dashed line draw karo coordinates array se
+            // ✍️ Nayi line/path draw karo coordinates array se
             busPathLine = L.polyline(data.path, {
-                color: '#3498db',     // Premium Blue color
-                weight: 5,            // Line ki motai
+                color: '#3498db',     // Line color (Premium Blue)
+                weight: 5,            // Line ki thickness
                 opacity: 0.8,         // Transparency
-                dashArray: '10, 10',  // Dotted route effect
+                dashArray: '10, 10',  // Navigation style dotted line EFFECT
                 lineJoin: 'round'
             }).addTo(map);
 
-            // 🔍 Smart Zoom: Map view ko automatic us poore route par set karo
+            // 🔍 Smart Zoom: Map view ko us poore route par automatic adjust karo
             const bounds = L.latLngBounds(data.path);
             map.fitBounds(bounds, { padding: [40, 40] });
 
-            console.log(`Line plotted successfully for Bus: ${busId}`);
-        } else {
-            // ❌ Check 3: Agar bus ka naam sahi hai par uska koi tracking data available nahi hai
-            alert(`ℹ️ Notice: Bus "${busId}" toh mili par uska koi rasta (path history) recorded nahi hai!`);
+            console.log(`Path generated smoothly for Bus ID: ${busId}`);
         }
     } catch (error) {
-        // ❌ Check 4: Agar internet band hai ya fetch crash ho gaya
         console.error("Error drawing route line:", error);
-        alert("⚠️ Network Error: Server se connect nahi ho paa rahe hain!");
     }
-}
-
-// 🖱️ 2. UI Button handler jo click hote hi chalega
-function handleBusSearchClick() {
-    const busIdInput = document.getElementById('search-bus-id').value.trim();
-    
-    // ❌ Check 5: Agar user ne bina kuch type kiye hi button daba diya
-    if (!busIdInput) {
-        alert("Bhai pehle Bus ID toh daalo!");
-        return;
-    }
-    
-    // Core function ko trigger karo input wali ID ke sath
-    drawBusPath(busIdInput);
 }
