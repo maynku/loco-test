@@ -70,7 +70,7 @@ function initMap() {
 // 📡 Interval trigger function
 function startTrackingLoop() {
     updateLiveBuses(); 
-    trackingInterval = setInterval(updateLiveBuses, 180000); 
+    trackingInterval = setInterval(updateLiveBuses, 20000); // 20 seconds
 }
 
 // 🎯 Fetch and Update Markers Function

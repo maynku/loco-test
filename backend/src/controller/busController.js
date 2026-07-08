@@ -66,8 +66,8 @@ const updateBusLocation = async (data) => {
 
         // 1. Redis mein instant tracking ke liye live location update karo
         console.log(`Updating Redis for Bus: ${busId} -> [${lat}, ${lng}]`);
-        await redisClient.set(`bus:${busId}:live`, JSON.stringify({ lat, lng, timestamp: new Date() }),{ EX: 180 }); // 5 minute expiry for live tracking
-        console.log(`Redis updated for Bus: ${busId} with 5 min expiry.`);
+        await redisClient.set(`bus:${busId}:live`, JSON.stringify({ lat, lng, timestamp: new Date() }),{ EX: 80 }); // 80 second ka ttl minute expiry for live tracking
+        console.log(`Redis updated for Bus: ${busId} with 40 second expiry.`);
 
 
         console.log(`Saving to MongoDB for Bus: ${busId} -> [${lat}, ${lng}]`);
