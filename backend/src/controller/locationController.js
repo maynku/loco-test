@@ -1,4 +1,4 @@
-const busModel=require('../model/busModel');
+const busModel=require('../model/busModel2');
 const getBusHistory = async (req, res) => {
     const { busId } = req.params;
 

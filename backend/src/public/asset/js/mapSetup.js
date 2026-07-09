@@ -1,4 +1,5 @@
-const API_URL = 'http://localhost:5000'; 
+//const API_URL = 'http://localhost:5000'; //if local run
+const API_URL = ''; //auto seerver url fetch kr lega
 let trackingInterval = null;
 
 // 🔄 Page load hote hi session check karo
@@ -153,9 +154,9 @@ async function drawBusPath(busId) {
         // ❌ Check 1: Agar server par route hi nahi mila ya server down hai (404, 500, etc.)
         if (!res.ok) {
             if (res.status === 404) {
-                alert(`⚠️ Error: Bhai, Bus ID "${busId}" server par exist hi nahi karti!`);
+                alert(`⚠️  Bus ID "${busId}" Not Exsist!`);
             } else {
-                alert("⚠️ Server error! Kuch der baad dubara try karein.");
+                alert("⚠️ Server error! Try After Sometime.");
             }
             return;
         }
