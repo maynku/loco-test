@@ -1,3 +1,6 @@
+import { BASE_URL } from './Constants'; // Agar file isi folder mein hai
+
+
 //retry+globalstatemanagement+
 import React, { useState, useEffect } from 'react'; 
 import { View, TextInput, Button, Alert, ActivityIndicator, StyleSheet, Text } from 'react-native';
@@ -8,9 +11,9 @@ import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // 🆕 Permanent storage ke liye
 
 const BACKGROUND_TRACKING_TASK = 'BACKGROUND_BUS_TRACKING';
-
+//url for ng rock https://demeritoriously-subaqua-belen.ngrok-free.dev
 // 📡 Ziddi Socket Configuration Top-Level par
-const socket = io('https://demeritoriously-subaqua-belen.ngrok-free.dev', {
+const socket = io(BASE_URL, {
   transports: ['websocket'],
   autoConnect: true,
   reconnection: true,             
@@ -90,7 +93,7 @@ export default function DriverApp() {
     }
     setLoading(true);
     try {
-      const response = await axios.post('https://demeritoriously-subaqua-belen.ngrok-free.dev/verify-bus', { busId });
+      const response = await axios.post(`${BASE_URL}/verify-bus`, { busId });
       if (response.data.success) {
         const hasPermission = await requestPermissions();
         if (hasPermission) {

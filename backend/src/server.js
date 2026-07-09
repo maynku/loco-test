@@ -38,7 +38,7 @@ app.get('/student',verifyBetaToken, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 // Server par entry point set kar rahe hain
-app.get('/', (req, res) => {
+app.get('/map', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 app.post('/api/create-beta-user', createBetaUser);
