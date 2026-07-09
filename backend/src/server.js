@@ -37,6 +37,10 @@ app.get('/live-location-all',verifyBetaToken,liveLocationAll);
 app.get('/student',verifyBetaToken, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+// Server par entry point set kar rahe hain
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 app.post('/api/create-beta-user', createBetaUser);
 app.post('/api/login', loginBetaUser);
 
