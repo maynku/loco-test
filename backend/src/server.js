@@ -46,8 +46,8 @@ app.post('/api/login', loginBetaUser);
 
 
 
-//check for the line marking 
-app.get('/api/bus-history/:busId',getBusHistory);
+//check for the line marking
+app.get('/api/bus-history/:busId',verifyBetaToken,getBusHistory);
 
 
 // curl.exe -X POST http://localhost:5000/api/testers `
@@ -129,27 +129,34 @@ async function startServer() {
   }
 }
 
-startServer();
-
-
-//main code working testing k liye isko bas comment kra hai beta testing k liye 
+//main code working testing k liye isko bas comment kra hai beta testing k liye
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
     socket.on('disconnect', () => {
         console.log('A user disconnected:', socket.id);
     });
 
-    socket.on('updateLocation', async (data) => {
+    socket.on('updateLocation', async (data, callback) => {
         console.log("Received Location:", data);
         // Sirf controller ko call kiya
-        await updateBusLocation(data);
+        // Issue #5 fix: try/catch + ack callback taaki driver ko save-status pata chale
+        try {
+            await updateBusLocation(data);
+            if (typeof callback === 'function') callback({ status: 'success' });
+        } catch (err) {
+            console.error('updateLocation failed:', err.message);
+            if (typeof callback === 'function') callback({ status: 'error', message: err.message });
+        }
         //beta testing k liye callback bhej rahe hai
-        
-        
+
+
         // Dashboard ko update bheja
         // io.emit('live-update', data);
     });
 });
+
+// Socket handlers register hone ke BAAD server start karo (Issue #11 fix)
+startServer();
 
 
 //beta testing handeling

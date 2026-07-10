@@ -54,20 +54,32 @@ const verifyBus = async (req, res) => {
 const updateBusLocation = async (data) => {
     const { busId, lat, lng } = data;
 
-    try {
-        //For Beta testing isko off kr dena 
-        const isValidBus = await bus.findOne({ busId: busId });
-        
-        if (!isValidBus) {
-            console.log(`[Security Alert] Fake Bus ID detected: ${busId}. Dropping frame.`);
-            throw new Error(`Invalid busId: ${busId}. Location update rejected.`);
-            return; // Yahin se baahar, database safe!
+    // ── Valid-ID cache (Fallback #7): pehle Redis SET dekho, warna Mongo (lazy) ──
+    // Har location update pe Mongo findOne mat maaro. Valid bus IDs Redis SET
+    // 'valid_bus_ids' mein cache karo — agli baar us bus ke liye DB hit nahi hoga.
+    let isValidBus = await redisClient.sIsMember('valid_bus_ids', busId);
+    if (!isValidBus) {
+        //For Beta testing isko off kr dena
+        const found = await bus.findOne({ busId: busId });
+        if (found) {
+            await redisClient.sAdd('valid_bus_ids', busId); // cache kar do future ke liye
+            isValidBus = true;
         }
+    }
 
+    if (!isValidBus) {
+        console.log(`[Security Alert] Fake Bus ID detected: ${busId}. Dropping frame.`);
+        throw new Error(`Invalid busId: ${busId}. Location update rejected.`);
+    }
+
+    try {
         // 1. Redis mein instant tracking ke liye live location update karo
         console.log(`Updating Redis for Bus: ${busId} -> [${lat}, ${lng}]`);
         await redisClient.set(`bus:${busId}:live`, JSON.stringify({ lat, lng, timestamp: new Date() }),{ EX: 80 }); // 80 second ka ttl minute expiry for live tracking
-        console.log(`Redis updated for Bus: ${busId} with 40 second expiry.`);
+        // CHAUTHA approach: active bus IDs ko ek SET mein rakho taaki read pe
+        // KEYS (blocking) ki jagah SMEMBERS + MGET use kar sakein.
+        await redisClient.sAdd('active_bus_ids', busId);
+        console.log(`Redis updated for Bus: ${busId} with 80 second expiry.`);
 
 
         console.log(`Saving to MongoDB for Bus: ${busId} -> [${lat}, ${lng}]`);
@@ -83,39 +95,55 @@ const updateBusLocation = async (data) => {
 
     } catch (error) {
         if(error.code === 11000) {
+            // Duplicate harmless hai — ise success maano, error mat throw karo
             console.log(`[Race Condition Handled] Duplicate entry for Bus ${busId}. Skipping this frame.`);
+            return;
         }
         console.error('Database error in updateBusLocation:', error.message);
+        throw error; // Issue #5 fix: error upar bhejo taaki driver ko ack se pata chale
     }
 };
 const liveLocationAll = async (req, res) => {
     try {
         // 1. RedisClient hamesha top par imported hona chahiye file ke
         console.log("Fetching all live bus locations from Redis...");
-        const keys = await redisClient.keys('bus:*:live');
-        console.log(`Found ${keys.length} active buses in Redis.`);
-        if (keys.length === 0) {
+        // CHAUTHA approach: KEYS (blocking, O(N)) ki jagah SET se active bus IDs lo
+        const busIds = await redisClient.sMembers('active_bus_ids');
+        console.log(`Found ${busIds.length} active buses in Redis SET.`);
+        if (busIds.length === 0) {
             console.log("No active buses found in Redis.");
             return res.status(200).json([]); // No active buses
         }
 
-        console.log("Keys fetched from Redis:", keys);
-        // 2. Multi/Pipeline fast fetch ke liye
-        const pipeline = redisClient.multi();
-        keys.forEach(key => pipeline.get(key));
-        const results = await pipeline.exec();
-        console.log("Fetched live locations from Redis:", results);
+        // 2. Ek MGET se sabka live data (51 ops → 2 ops)
+        const keys = busIds.map(id => `bus:${id}:live`);
+        const results = await redisClient.mGet(keys);
+        console.log("Fetched live locations from Redis (MGET):", results);
 
-        // 3. Array format mein data ready karna
-        const allBuses = keys.map((key, index) => {
-            const busId = key.split(':')[1];
-            return {
-                busId,
-                ...JSON.parse(results[index])
-            };
+        // 3. Array format mein data ready karna + zombie IDs saaf karna
+        const allBuses = [];
+        const staleIds = [];
+        busIds.forEach((busId, index) => {
+            const raw = results[index];
+            if (!raw) {
+                // Live key TTL (EX:80) se expire ho gayi = bus band. SET se bhi hatao.
+                staleIds.push(busId);
+                return;
+            }
+            try {
+                allBuses.push({ busId, ...JSON.parse(raw) });
+            } catch (parseErr) {
+                // Corrupt data — is bus ko skip karo aur SET se hatao
+                staleIds.push(busId);
+            }
         });
-        console.log("All live bus locations prepared for response:", allBuses);
 
+        // Zombie bus IDs SET se saaf (tumhaare TTL cleanup ko complement karta hai)
+        if (staleIds.length) {
+            await redisClient.sRem('active_bus_ids', staleIds);
+        }
+
+        console.log("All live bus locations prepared for response:", allBuses);
         return res.status(200).json(allBuses);
 
     } catch (error) {

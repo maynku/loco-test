@@ -117,7 +117,9 @@ async function updateLiveBuses() {
                 `;
 
                 if (busMarkers[busId]) {
-                    busMarkers[busId].setLatLng([lat, lng]).setPopupContent(popupContent);
+                    // Interpolation: marker ko purani se nayi position tak smoothly slide karo
+                    animateMarkerTo(busMarkers[busId], [lat, lng]);
+                    busMarkers[busId].setPopupContent(popupContent);
                 } else {
                     busMarkers[busId] = L.marker([lat, lng]).addTo(map).bindPopup(popupContent);
                 }
@@ -135,6 +137,29 @@ async function updateLiveBuses() {
     }
 }
 
+// 🎞️ Marker ko purani position se nayi position tak smoothly slide karo (interpolation)
+// Data 30s pe aata hai, par UI pe bus smoothly chalti dikhegi — no extra backend load.
+function animateMarkerTo(marker, newLatLng, duration = 2000) {
+    const start = marker.getLatLng();
+    const end = L.latLng(newLatLng);
+
+    // Movement na ke barabar hai toh seedha set kar do (animation ki zaroorat nahi)
+    if (start.lat === end.lat && start.lng === end.lng) {
+        marker.setLatLng(end);
+        return;
+    }
+
+    const startTime = performance.now();
+    function step(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+        const lat = start.lat + (end.lat - start.lat) * t;
+        const lng = start.lng + (end.lng - start.lng) * t;
+        marker.setLatLng([lat, lng]);
+        if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
 // =========================================================================
 // 🚀 NEW FEATURE: PATH LINE GENERATION & ERROR-PROOF UI SEARCH
 // =========================================================================
@@ -145,10 +170,12 @@ let busPathLine = null; // Map par purani polyline track karne ke liye variable
 async function drawBusPath(busId) {
     try {
         console.log(`Fetching history data for Bus ID: ${busId}`);
-        
-        // Open API hit karo bina kisi header ya token ke
+
+        // Protected API hit karo Bearer token ke saath (Issue #6 fix)
+        const token = localStorage.getItem('beta_token');
         const res = await fetch(`${API_URL}/api/bus-history/${busId}`, {
-            method: 'GET'
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
 
         // ❌ Check 1: Agar server par route hi nahi mila ya server down hai (404, 500, etc.)

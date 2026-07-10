@@ -357,6 +357,8 @@ Priority order mein, sabse pehle fatne wala upar:
 
 ## 📊 Ek Nazar Mein — Load Distribution
 
+### 🔴 BEFORE (fixes se pehle — `KEYS` + 50 GET)
+
 ```
                     LOAD DISTRIBUTION (300 users, 50 buses)
    ┌────────────────────────────────────────────────────────────────┐
@@ -368,6 +370,47 @@ Priority order mein, sabse pehle fatne wala upar:
    │  → Optimize karna hai toh DASHBOARD READ PATH pe focus karo     │
    └────────────────────────────────────────────────────────────────┘
 ```
+
+### 🟢 AFTER (fixes ke baad — CHAUTHA approach: SMEMBERS + MGET)
+
+> **Code change ho chuka hai** (dekho `CHANGES.md` → Change #5). Dashboard read ab
+> `KEYS` + 50 GET (51 ops) ki jagah `SMEMBERS` + 1 `MGET` (~2 ops) use karta hai.
+
+```
+Naya read cost per dashboard request:
+  SMEMBERS active_bus_ids   → 1 op
+  MGET (saari keys 1 call)  → 1 op
+  = ~2 ops per request       (pehle 51 the)
+
+@ 300 users, har 20s: 300 ÷ 20 × 2 = ~30 ops/sec
+```
+
+```
+                LOAD DISTRIBUTION — AFTER (300 users, 50 buses)
+   ┌────────────────────────────────────────────────────────────────┐
+   │  Ingestion (drivers)   █ ~1.67 ops/sec                          │
+   │                                                                  │
+   │  Dashboard reads       █ ~30 ops/sec                            │
+   │                                                                  │
+   │  → 765 → 30 ops/sec   (~25× kam load!)                          │
+   │  → KEYS blocking khatam (SMEMBERS non-blocking)                 │
+   │  → JSON.parse(null) crash bhi fix (Issue #9)                    │
+   └────────────────────────────────────────────────────────────────┘
+```
+
+**Farak ek nazar mein:**
+
+| | BEFORE (`KEYS`) | AFTER (`SMEMBERS+MGET`) |
+|---|---|---|
+| Ops per request | 51 | **~2** |
+| Redis ops/sec @ 300 users | ~765/sec | **~30/sec** |
+| Redis blocking? | Haan (`KEYS`) | Nahi |
+| Crash risk (`JSON.parse(null)`) | Haan | Nahi (skip + `SREM`) |
+| Zombie cleanup | TTL (Redis) | TTL (Redis) — **same, intact** |
+| **Redis free tier @ 300** | 🔴 Struggle | 🟢 Comfortable |
+
+> ✅ **Ab Redis free tier + t2.micro dono comfortably 300 users handle kar lenge.**
+> Ingestion aur dashboard load ab lagbhag barabar hain — koi ek side "bottleneck" nahi.
 
 ---
 
