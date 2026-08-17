@@ -1,6 +1,6 @@
 # 🚌 Loco — Real-Time College Bus Tracking System
 
-> Live GPS tracking system jisme bus drivers apni location background mein stream karte hain, aur students ek web dashboard pe saari buses ko real-time map pe dekh sakte hain — saath hi kisi bus ka route history bhi.
+> A live GPS tracking system where bus drivers stream their location in the background, and students can view all buses in real time on a web dashboard map — along with any bus's route history.
 
 ---
 
@@ -24,15 +24,15 @@
 
 ## 🎯 Overview
 
-Loco 3 tier ka system hai:
+Loco is a 3-tier system:
 
-| Tier | Kaam | Tech |
+| Tier | Function | Tech |
 |------|------|------|
-| **Driver App** | Bus mein driver ke phone pe chalti hai. Background mein GPS location har 30 sec WebSocket se bhejti hai. | Expo / React Native |
-| **Backend Server** | Location receive karta hai, live position Redis mein cache karta hai (fast read), history MongoDB mein save karta hai (permanent). | Node.js + Express + Socket.IO |
-| **Web Dashboard** | Students login karke live map pe buses dekhte hain + kisi bus ka route history draw karte hain. | Leaflet + Vanilla JS |
+| **Driver App** | Runs on the driver's phone inside the bus. Sends GPS location every 30 sec over WebSocket in the background. | Expo / React Native |
+| **Backend Server** | Receives locations, caches the live position in Redis (fast reads), and saves history in MongoDB (permanent). | Node.js + Express + Socket.IO |
+| **Web Dashboard** | Students log in and view live buses on a map + draw a given bus's route history. | Leaflet + Vanilla JS |
 
-**Core idea:** Do data stores — **Redis "hot" data ke liye** (abhi bus kahan hai), **MongoDB "cold" data ke liye** (bus kahan-kahan gayi). Ingestion WebSocket se, viewing HTTP polling se.
+**Core idea:** Two data stores — **Redis for "hot" data** (where the bus is right now), **MongoDB for "cold" data** (everywhere the bus has been). Ingestion happens over WebSocket; viewing happens via HTTP polling.
 
 ---
 
@@ -44,8 +44,8 @@ Loco 3 tier ka system hai:
 │   📱 DRIVER APP (Expo/React Native)          🖥  WEB DASHBOARD (Leaflet)        │
 │   ┌────────────────────────────┐            ┌────────────────────────────┐    │
 │   │  Background GPS Task        │            │  Login → Map View           │    │
-│   │  har 30s location bhejo     │            │  har 20s live buses poll    │    │
-│   │  (High accuracy ~10m)       │            │  + route history draw       │    │
+│   │  send location every 30s    │            │  poll live buses every 20s  │    │
+│   │  (High accuracy ~10m)       │            │  + draw route history       │    │
 │   └──────────────┬─────────────┘            └──────────────┬─────────────┘    │
 │                  │ WebSocket                                 │ HTTP (polling)   │
 │                  │ emit('updateLocation')                    │ GET /live-...    │
@@ -78,44 +78,44 @@ Loco 3 tier ka system hai:
 ### 1. Location Ingestion (Driver → Server)
 
 ```
-Driver "START TRACKING" dabata hai
+Driver taps "START TRACKING"
    │
-   ├─► POST /verify-bus ──► MongoDB mein busId check (valid bus hai?)
+   ├─► POST /verify-bus ──► check busId in MongoDB (is it a valid bus?)
    │
    ├─► Location permission (foreground + background)
    │
-   └─► Background GPS task start (har 30s)
+   └─► Background GPS task starts (every 30s)
           │
           └─► socket.emit('updateLocation', { busId, lat, lng })
                  │
                  ▼
           updateBusLocation()
              │
-             ├─ 1. Valid bus? → Redis SET 'valid_bus_ids' check (cache), warna MongoDB
+             ├─ 1. Valid bus? → check Redis SET 'valid_bus_ids' (cache), else MongoDB
              ├─ 2. Redis: SET bus:<id>:live = {lat,lng,ts}  (EX:80s)
              ├─ 3. Redis: SADD active_bus_ids <busId>
              └─ 4. MongoDB: create({ busId, lat, lng, timestamp })   ← history
           │
-          └─◄ ack callback { status: 'success' | 'error' }   (driver ko confirmation)
+          └─◄ ack callback { status: 'success' | 'error' }   (confirmation to driver)
 ```
 
 ### 2. Live Viewing (Server → Dashboard)
 
 ```
-Student login → JWT token → localStorage
+Student logs in → JWT token → localStorage
    │
-   └─► har 20s: GET /live-location-all  (Authorization: Bearer <token>)
+   └─► every 20s: GET /live-location-all  (Authorization: Bearer <token>)
           │
           ▼
        liveLocationAll()
-          ├─ Redis: SMEMBERS active_bus_ids   (non-blocking, KEYS nahi)
-          ├─ Redis: MGET bus:<id>:live ...    (ek call mein sabka data)
-          └─ expired (TTL) keys skip + SET se saaf (SREM)
+          ├─ Redis: SMEMBERS active_bus_ids   (non-blocking, no KEYS)
+          ├─ Redis: MGET bus:<id>:live ...    (fetch everything in one call)
+          └─ skip expired (TTL) keys + clean them from the SET (SREM)
           │
           └─► [ {busId, lat, lng, timestamp}, ... ]
                  │
                  ▼
-          Dashboard: markers update (smooth interpolation se slide)
+          Dashboard: markers update (slide smoothly via interpolation)
 ```
 
 ### 3. Route History (on demand)
@@ -125,7 +125,7 @@ Student login → JWT token → localStorage
    │
    ▼
 getBusHistory()
-   ├─ MongoDB: find({ busId, timestamp >= max(aaj-midnight, 2hr-ago) }).sort(ts)
+   ├─ MongoDB: find({ busId, timestamp >= max(today-midnight, 2hr-ago) }).sort(ts)
    └─► path: [[lat,lng], [lat,lng], ...]  → Leaflet polyline
 ```
 
@@ -144,7 +144,7 @@ getBusHistory()
 **Driver App**
 - **Expo (SDK 54)** / React Native
 - **expo-location** + **expo-task-manager** — background GPS tracking
-- **@react-native-async-storage/async-storage** — busId persist (background task ke liye)
+- **@react-native-async-storage/async-storage** — persists busId (needed for the background task)
 - **socket.io-client**, **axios**
 
 **Web Dashboard**
@@ -169,7 +169,7 @@ loco-test/
 │       │   └── locationController.js # getBusHistory (route path)
 │       ├── model/
 │       │   ├── busModel2.js          # Bus schema (flat rows) — ACTIVE model
-│       │   ├── busModel.js           # purana schema (unused)
+│       │   ├── busModel.js           # old schema (unused)
 │       │   └── betaUser.js           # Tester (login users) schema
 │       ├── public/                   # web dashboard (served static)
 │       │   ├── index.html            # login + live map + show-path UI
@@ -185,7 +185,7 @@ loco-test/
         └── app.json                  # Expo config + Android location permissions
 ```
 
-> **Note:** Codebase mein kuch duplicate/experimental files hain (`AppRetry.js`, `index2.html`, `mapSetupLine.js`, `busModel.js`, etc.) — ye purane iterations hain, active nahi. Active files upar table mein hain.
+> **Note:** The codebase has some duplicate/experimental files (`AppRetry.js`, `index2.html`, `mapSetupLine.js`, `busModel.js`, etc.) — these are old iterations and are not active. Active files are listed in the table above.
 
 ---
 
@@ -193,22 +193,22 @@ loco-test/
 
 ### 🔴 Redis (hot / live data)
 
-| Key | Type | Kya store hota hai | TTL |
+| Key | Type | What it stores | TTL |
 |-----|------|--------------------|-----|
-| `bus:<id>:live` | String (JSON) | Bus ki latest position `{lat,lng,timestamp}` | **80 sec** |
-| `active_bus_ids` | Set | Kaunsi buses abhi active hain (read index — `KEYS` avoid karne ke liye) | — |
-| `valid_bus_ids` | Set | Registered bus IDs ka cache (per-location Mongo read bachane ke liye) | — |
+| `bus:<id>:live` | String (JSON) | Bus's latest position `{lat,lng,timestamp}` | **80 sec** |
+| `active_bus_ids` | Set | Which buses are currently active (read index — to avoid using `KEYS`) | — |
+| `valid_bus_ids` | Set | Cache of registered bus IDs (to save a Mongo read on every location update) | — |
 
-**Zombie cleanup:** `bus:<id>:live` pe **80s TTL** — bus band ho toh key khud expire ho jaati hai → dashboard se apne aap gayab. `active_bus_ids` SET mein bacha ID read time pe `SREM` se saaf hota hai.
+**Zombie cleanup:** `bus:<id>:live` has an **80s TTL** — if a bus goes offline, the key simply expires on its own → it disappears from the dashboard automatically. Any leftover ID in the `active_bus_ids` SET gets cleaned up via `SREM` at read time.
 
 ### 🍃 MongoDB (cold / history data)
 
-**`Bus` collection** (`busModel2.js`) — har location ek flat row:
+**`Bus` collection** (`busModel2.js`) — each location is a flat row:
 ```js
 { busId: String, lat: Number, lng: Number, timestamp: Date }
 ```
-- **Compound index** `{ busId: 1, timestamp: 1 }` — history query fast
-- **TTL index** `{ timestamp: 1 }` — **7 din baad rows auto-delete** (storage full nahi hota)
+- **Compound index** `{ busId: 1, timestamp: 1 }` — makes history queries fast
+- **TTL index** `{ timestamp: 1 }` — **rows auto-delete after 7 days** (so storage doesn't fill up)
 
 **`Tester` collection** (`betaUser.js`) — dashboard login users `{ username, password, name }`.
 
@@ -216,17 +216,17 @@ loco-test/
 
 ## 📡 API Reference
 
-| Method | Endpoint | Auth | Kaam |
+| Method | Endpoint | Auth | Function |
 |--------|----------|------|------|
-| `POST` | `/verify-bus` | ❌ | Bus ID valid hai? (driver start pe) — MongoDB check |
+| `POST` | `/verify-bus` | ❌ | Is the Bus ID valid? (checked when driver starts) — MongoDB lookup |
 | `POST` | `/api/login` | ❌ | Dashboard user login → JWT token |
-| `POST` | `/api/create-beta-user` | ❌ | Naya dashboard user banao |
-| `GET` | `/live-location-all` | ✅ JWT | Saari active buses ki live location |
-| `GET` | `/api/bus-history/:busId` | ✅ JWT | Ek bus ka route path (aaj / last 2hr) |
-| `GET` | `/student` · `/map` | (`/student` JWT) | Dashboard HTML serve |
-| `POST` | `/api/bus/dummy-location` | ❌ | Testing ke liye manual location inject |
+| `POST` | `/api/create-beta-user` | ❌ | Create a new dashboard user |
+| `GET` | `/live-location-all` | ✅ JWT | Live location of all active buses |
+| `GET` | `/api/bus-history/:busId` | ✅ JWT | Route path of one bus (today / last 2hr) |
+| `GET` | `/student` · `/map` | (`/student` needs JWT) | Serve dashboard HTML |
+| `POST` | `/api/bus/dummy-location` | ❌ | Manually inject a location, for testing |
 
-**Auth:** Protected routes ko `Authorization: Bearer <token>` header chahiye. Token `/api/login` se milta hai, 3 din valid.
+**Auth:** Protected routes require an `Authorization: Bearer <token>` header. Tokens come from `/api/login` and are valid for 3 days.
 
 ---
 
@@ -234,9 +234,9 @@ loco-test/
 
 Connection: `io(BASE_URL, { transports: ['websocket'] })`
 
-| Event | Direction | Payload | Kaam |
+| Event | Direction | Payload | Function |
 |-------|-----------|---------|------|
-| `updateLocation` | Driver → Server | `{ busId, lat, lng, timestamp }` | Location update. Ack callback deta hai `{ status }` |
+| `updateLocation` | Driver → Server | `{ busId, lat, lng, timestamp }` | Location update. Returns an ack callback `{ status }` |
 | `connect` / `disconnect` | — | — | Connection lifecycle |
 
 ---
@@ -245,36 +245,36 @@ Connection: `io(BASE_URL, { transports: ['websocket'] })`
 
 ### Prerequisites
 - Node.js (v18+)
-- MongoDB (Atlas ya local)
-- Redis (cloud ya local)
+- MongoDB (Atlas or local)
+- Redis (cloud or local)
 
 ### Backend
 
 ```bash
 cd backend
 npm install
-# src/.env banao (neeche Environment Variables dekho)
+# create src/.env (see Environment Variables below)
 npm start          # cross-env TZ=Asia/Kolkata node src/server.js
 ```
-Server `http://localhost:5000` pe chalega (ya `.env` ka PORT).
+The server will run on `http://localhost:5000` (or whatever `PORT` is set in `.env`).
 
 ### Driver App (Expo)
 
 ```bash
 cd frontend/loco-frontend
 npm install
-# Constants.js mein BASE_URL apne backend pe point karo
+# point BASE_URL in Constants.js to your backend
 npm start          # expo start
-# QR scan (Expo Go) ya: npm run android
+# scan the QR code (Expo Go) or run: npm run android
 ```
 
 ### Web Dashboard
-Backend ke saath hi serve hota hai — browser mein `http://<backend>/student` (login chahiye) ya `/map` kholo.
+Served together with the backend — open `http://<backend>/student` (requires login) or `/map` in a browser.
 
 ### Load Test (optional)
 ```bash
 cd backend
-node src/stresstest.js   # 20 buses simulate karta hai
+node src/stresstest.js   # simulates 20 buses
 ```
 
 ---
@@ -288,35 +288,35 @@ PORT=5000
 MONGO_URI=<your-mongodb-connection-string>
 JWT_SECRET=<strong-random-secret-min-64-chars>
 REDIS_PASSWORD=<your-redis-password>
-# Redis host/port abhi redis.js mein hai — ise bhi env mein le jaana recommended
+# Redis host/port are currently in redis.js — recommended to move these into env too
 ```
 
-> ⚠️ **Security:** `.env` ko kabhi git mein commit mat karo. `.gitignore` mein `.env` aur `node_modules/` add karo. (Detail ke liye `CODE_REVIEW_HINGLISH.md` dekho.)
+> ⚠️ **Security:** Never commit `.env` to git. Add `.env` and `node_modules/` to `.gitignore`. (See `CODE_REVIEW_HINGLISH.md` for details.)
 
 ---
 
 ## 🧠 Key Design Decisions
 
-**1. Redis (hot) + MongoDB (cold) do stores kyun?**
-Live "abhi bus kahan hai" har 20s padhna padta hai (fast chahiye) → Redis. "Bus kahan-kahan gayi" kabhi-kabhi chahiye (permanent) → MongoDB. Dono ka kaam alag, isliye do stores.
+**1. Why two stores — Redis (hot) + MongoDB (cold)?**
+The live "where is the bus right now" data needs to be read every 20s (needs to be fast) → Redis. "Everywhere the bus has been" is needed only occasionally (needs to be permanent) → MongoDB. Since the two jobs are different, two stores are used.
 
-**2. Dashboard polling kyun, WebSocket kyun nahi?**
-300 viewers ke liye 300 persistent WebSocket connections t2.micro pe khud bojh ban jaate. Simple HTTP polling (har 20s) + Redis SET read (~2 ops/request) sasta aur scale karta hai.
+**2. Why dashboard polling instead of WebSocket?**
+For 300 viewers, 300 persistent WebSocket connections would themselves become a burden on a t2.micro. Simple HTTP polling (every 20s) + a Redis SET read (~2 ops/request) is cheaper and scales better.
 
-**3. `active_bus_ids` SET kyun (seedhe `KEYS` kyun nahi)?**
-`KEYS bus:*:live` blocking + O(N) hai — har poll pe Redis freeze karta. Ek SET index se `SMEMBERS + MGET` = ~2 ops (vs 51). ~25× kam load. Zombie cleanup phir bhi key-level TTL se hota hai.
+**3. Why an `active_bus_ids` SET instead of just using `KEYS` directly?**
+`KEYS bus:*:live` is blocking and O(N) — it would freeze Redis on every poll. With a SET index, `SMEMBERS + MGET` = ~2 ops (vs 51). That's ~25× less load. Zombie cleanup still happens via the key-level TTL.
 
-**4. Location interval 30s + frontend interpolation.**
-30s ingestion load/battery kam rakhta hai. Bus "teleport" na dikhe isliye dashboard marker ko do points ke beech smoothly slide (interpolate) karta hai — data 30s pe, dikhna smooth.
+**4. 30s location interval + frontend interpolation.**
+A 30s ingestion interval keeps load/battery usage low. So the bus doesn't appear to "teleport," the dashboard marker smoothly slides (interpolates) between two points — data arrives every 30s, but the display looks smooth.
 
 **5. Background GPS + AsyncStorage.**
-busId ko disk (AsyncStorage) pe save karte hain taaki app minimize/restart hone pe bhi background task busId padh sake — global variable pe depend nahi.
+The busId is saved to disk (AsyncStorage) so that even if the app is minimized or restarted, the background task can still read the busId — instead of depending on a global variable.
 
 ---
 
 ## 📊 Scaling & Capacity
 
-Current optimized state (fixes ke baad):
+Current optimized state (after fixes):
 
 | Load | 200 users, 20 buses | 300 users, 50 buses |
 |------|--------------------|--------------------|
@@ -326,20 +326,20 @@ Current optimized state (fixes ke baad):
 | Redis free tier | 🟢 Easy | 🟢 Easy |
 | Mongo M0 storage | 🟢 ~60 MB steady (7d TTL) | 🟢 controlled |
 
-> **Redis connection limit note:** Free tier ka ~25 connection limit **backend instances** se juड़a hai, users se nahi. Ek t2.micro = ek Node process = ~1-2 Redis connections. Limit tabhi hit hoga jab ~25 parallel server instances scale karo.
+> **Redis connection limit note:** The free tier's ~25 connection limit is tied to **backend instances**, not users. One t2.micro = one Node process = ~1-2 Redis connections. The limit would only be hit if you scaled to ~25 parallel server instances.
 
-Detail: `POTENTIAL_FALLBACK_HINGLISH.md` mein full back-of-envelope calculation hai.
+Details: full back-of-envelope calculations are in `POTENTIAL_FALLBACK_HINGLISH.md`.
 
 ---
 
 ## 📚 Related Docs
 
-| Doc | Kya hai |
+| Doc | What it contains |
 |-----|---------|
 | `CODE_REVIEW_HINGLISH.md` | Security + correctness issues (bugs, secrets, auth) — 17 findings |
 | `POTENTIAL_FALLBACK_HINGLISH.md` | Capacity/scale/accuracy analysis, load distribution |
 | `OPTIMIZATION_DEEPDIVE_HINGLISH.md` | KEYS vs HASH, interpolation, t2 vs t3 deep-dive |
-| `CHANGES.md` | Kiye gaye code changes ka log (kya/kyun + before/after) |
+| `CHANGES.md` | Log of code changes made (what/why + before/after) |
 
 ---
 
